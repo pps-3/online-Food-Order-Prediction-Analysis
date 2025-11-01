@@ -30,7 +30,6 @@ def load_data():
 # Load data
 data = load_data()
 
-
 # Streamlit App
 st.title("Online Food Order Prediction App")
 
