@@ -3,10 +3,53 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier  # Example model
+from sklearn.ensemble import RandomForestClassifier
+import os
+
+# MUST be the first Streamlit command!
+st.set_page_config(page_title="Online Food Order Prediction", layout="wide")
+
+# Cache data loading for better performance
+@st.cache_data
+def load_data():
+    """Load and return the dataset"""
+    # Try multiple paths for Streamlit Cloud compatibility
+    csv_paths = [
+        "onlinefoods.csv",  # Same directory as app.py
+        "online food delivery app/onlinefoods.csv",  # Subdirectory
+        os.path.join(os.path.dirname(__file__), "onlinefoods.csv")  # Relative to script
+    ]
+    
+    for path in csv_paths:
+        if os.path.exists(path):
+            return pd.read_csv(path)
+    
+    # Return None if file not found (don't call st.error here as it's cached)
+    return None
+
 # Load data
-data = pd.read_csv("onlinefoods.csv")
+data = load_data()
+
+
+# Streamlit App
+st.title("Online Food Order Prediction App")
+
+# Data validation check - must be done before preprocessing
+if data is None:
+    st.error("Error: Could not find 'onlinefoods.csv'. Please ensure the file exists in the correct location.")
+    st.stop()
+
+if data.empty:
+    st.error("Error: The dataset is empty. Please check 'onlinefoods.csv'.")
+    st.stop()
+
+# Check for required columns before preprocessing
+required_columns = ["Age", "Gender", "Marital Status", "Occupation", "Monthly Income", 
+                   "Educational Qualifications", "Family size", "Pin code", "Feedback", "Output"]
+missing_columns = [col for col in required_columns if col not in data.columns]
+if missing_columns:
+    st.error(f"Error: Missing required columns: {', '.join(missing_columns)}")
+    st.stop()
 
 # Preprocessing
 data["Gender"] = data["Gender"].map({"Male": 1, "Female": 0})
@@ -30,7 +73,7 @@ income_mapping = {
     "10001 to 25000": 17500,
     "25001 to 50000": 37500
 }
-data["Monthly Income"] = data["Monthly Income"].replace(income_mapping)
+data["Monthly Income"] = data["Monthly Income"].replace(income_mapping).infer_objects(copy=False)
 data["Monthly Income"] = pd.to_numeric(data["Monthly Income"])
 
 # Handle missing values
@@ -47,32 +90,23 @@ for col in categorical_columns:
 # Remove any remaining rows with NaN values
 data = data.dropna()
 
-# Streamlit App
-st.set_page_config(page_title="Online Food Order Prediction", layout="wide")
-st.title("Online Food Order Prediction App")
-
-# Data validation check
-if data.empty:
-    st.error("Error: Could not load the dataset. Please check if 'onlinefoods.csv' exists.")
-    st.stop()
-
-# Check for required columns
-required_columns = ["Age", "Gender", "Marital Status", "Occupation", "Monthly Income", 
-                   "Educational Qualifications", "Family size", "Pin code", "Feedback", "Output"]
-missing_columns = [col for col in required_columns if col not in data.columns]
-if missing_columns:
-    st.error(f"Error: Missing required columns: {', '.join(missing_columns)}")
-    st.stop()
-
-try:
-    # Train a model (example: RandomForestClassifier)
+# Cache model training for better performance
+@st.cache_resource
+def train_model(data):
+    """Train and return the prediction model"""
+    # Prepare features and target
     x = np.array(data[["Age", "Gender", "Marital Status", "Occupation", 
                        "Monthly Income", "Educational Qualifications", 
                        "Family size", "Pin code", "Feedback"]])
-    y = np.array(data[["Output"]])
+    y = np.array(data["Output"]).ravel()  # Convert to 1D array
     
-    model = RandomForestClassifier(random_state=42)
+    # Train model
+    model = RandomForestClassifier(random_state=42, n_estimators=100)
     model.fit(x, y)
+    return model
+
+try:
+    model = train_model(data)
 except Exception as e:
     st.error(f"Error during model training: {str(e)}")
     st.stop()
